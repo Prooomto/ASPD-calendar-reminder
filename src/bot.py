@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import json
 import os
 
-TOKEN = os.getenv("BOT_TOKEN", "PUT_YOUR_TOKEN_HERE")
+TOKEN = os.getenv("BOT_TOKEN", "")
 DATA_FILE = "src/storage.json"
 
 bot = Bot(token=TOKEN)
@@ -25,7 +25,7 @@ def save_events(events):
 
 @dp.message(Command("start"))
 async def start_command(message: types.Message):
-    await message.answer("👋 Welcome! Use /addevent YYYY-MM-DD HH:MM Your event to add reminder.")
+    await message.answer("👋 Welcome! Use /addevent YYYY-MM-DD HH:MM Your event to add reminder.\nLink account: /link <code> (get code on website)")
 
 @dp.message(Command("addevent"))
 async def add_event(message: types.Message):
@@ -65,6 +65,26 @@ async def list_events(message: types.Message):
         return
     reply = "\n".join([f"- {e['time']} → {e['text']}" for e in events[user_id]])
     await message.answer(f"🗓️ Your events:\n{reply}")
+
+
+@dp.message(Command("link"))
+async def link_account(message: types.Message):
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("❗ Use: /link <code>")
+        return
+    code = parts[1].strip()
+    try:
+        import httpx
+        api_url = os.getenv("API_URL", "http://localhost:8000")
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(f"{api_url}/telegram/link/confirm", params={"telegram_id": str(message.from_user.id), "code": code})
+            if resp.status_code == 200:
+                await message.answer("✅ Account linked!")
+            else:
+                await message.answer("❗ Link failed. Check code on website.")
+    except Exception:
+        await message.answer("❗ Service unavailable. Try later.")
 
 async def main():
     scheduler.start()

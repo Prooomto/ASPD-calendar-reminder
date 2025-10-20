@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
-from src.scheduler import schedule_event
+from src.scheluder import schedule_event
 
 def test_schedule_event():
     scheduler = BackgroundScheduler()
