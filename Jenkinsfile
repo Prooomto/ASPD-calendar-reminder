@@ -122,7 +122,7 @@ pipeline {
         script {
           // тег вида: basename:branch-build
           def branch = sh(returnStdout: true, script: 'git rev-parse --abbrev-ref HEAD').trim()
-          env.IMAGE_TAG = "${env.IMAGE_BASENAME}:${branch}-${env.BUILD_NUMBER}" 
+          env.IMAGE_TAG = "${env.IMAGE_BASENAME}:${branch}-${env.BUILD_NUMBER}"
           def buildCtx = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
           sh "docker build -t ${env.IMAGE_TAG} \"${buildCtx}\""
           echo "Built image: ${env.IMAGE_TAG}"
