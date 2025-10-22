@@ -1,17 +1,16 @@
 pipeline {
   agent any
 
-  // Если твой код лежит в подпапке, задай SUBDIR='имя_папки'.
-  // Если в корне — оставь пустым.
   environment {
     PYTHONUNBUFFERED = '1'
-    SUBDIR = ''        // например: 'ASPD-calendar-reminder'
-    IMAGE_BASENAME = 'aspd-calendar-reminder'
+    IMAGE_BASENAME   = 'aspd-calendar-reminder'
+    // код и requirements.txt в КОРНЕ:
+    SUBDIR           = ''
   }
 
   options {
     timestamps()
-    // ansiColor('xterm')  // включи, если установлен плагин AnsiColor
+    // ansiColor('xterm') // включи, если установлен AnsiColor
   }
 
   stages {
@@ -30,7 +29,7 @@ pipeline {
       }
     }
 
-    // --- Tests (fallback, без docker) ---
+    // ---------- Tests (fallback: без docker) ----------
     stage('Tests (fallback)') {
       when { expression { return env.HAS_DOCKER == 'no' } }
       steps {
@@ -49,7 +48,7 @@ pipeline {
               $PIP --version  true
 
               $PY -m venv .venv
-              . .venv/bin/activate || source .venv/Scripts/activate
+              . .venv/bin/activate  source .venv/Scripts/activate
 
               python -m pip install --upgrade pip
               pip install -r requirements.txt
@@ -64,37 +63,53 @@ pipeline {
           script {
             def runDir = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
             dir(runDir) {
-              junit 'pytest.xml'
+              if (fileExists('pytest.xml')) junit 'pytest.xml' else echo 'pytest.xml not found'
               if (fileExists('coverage.xml')) {
                 publishCoverage adapters: [coberturaAdapter('coverage.xml')],
                                 sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
-              } else {
-                echo 'coverage.xml not found — skipping coverage publish'
-              }
+              } else echo 'coverage.xml not found'
             }
           }
         }
       }
     }
 
-    // --- Tests (in Docker, Variant A) ---
+    // ---------- Tests (in Docker, Variant A без bind-mount) ----------
     stage('Tests (in Docker)') {
       when { expression { return env.HAS_DOCKER == 'yes' } }
       steps {
         script {
-          def mountDir = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
-          sh """
-            echo "WORKSPACE MOUNT = ${mountDir}"
-            docker run --rm \
-              -v "${mountDir}:/workspace" -w /workspace \
-              python:3.11 bash -lc '
+          def runDir = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
+          dir(runDir) {
+            sh '''
+              set -e
+              echo "RunDir: $(pwd)"
+              # Создаём контейнер с рабочей директорией /workspace
+              CID=$(docker create -w /workspace python:3.11 bash -lc "
                 set -e
-                ls -la
                 python -m pip install --upgrade pip &&
                 pip install -r requirements.txt &&
                 pytest -q --junitxml=pytest.xml --cov=src --cov-report=term-missing --cov-report=xml
-              '
-          """
+              ")
+
+              # Копируем исходники внутрь контейнера (без bind-mount)
+              docker cp . "${CID}:/workspace"
+
+              # Запускаем и ждём завершения
+              set +e
+              docker start -a "$CID"
+              EXIT_CODE=$?
+              set -e
+
+              # Забираем отчёты обратно в рабочую директорию Jenkins
+              docker cp "$CID:/workspace/pytest.xml"   ./pytest.xml    true
+              docker cp "$CID:/workspace/coverage.xml" ./coverage.xml  true
+
+              # Убираем контейнер
+              docker rm -f "$CID" >/dev/null 2>&1  true
+              exit $EXIT_CODE
+            '''
+          }
         }
       }
       post {
@@ -102,25 +117,22 @@ pipeline {
           script {
             def runDir = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
             dir(runDir) {
-              junit 'pytest.xml'
+              if (fileExists('pytest.xml')) junit 'pytest.xml' else echo 'pytest.xml not found'
               if (fileExists('coverage.xml')) {
                 publishCoverage adapters: [coberturaAdapter('coverage.xml')],
                                 sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
-              } else {
-                echo 'coverage.xml not found — skipping coverage publish'
-              }
+              } else echo 'coverage.xml not found'
             }
           }
         }
       }
     }
 
-    // --- Build image ---
+    // ---------- Build Docker image ----------
     stage('Build Docker image') {
       when { expression { return env.HAS_DOCKER == 'yes' } }
       steps {
         script {
-          // тег вида: basename:branch-build
           def branch = sh(returnStdout: true, script: 'git rev-parse --abbrev-ref HEAD').trim()
           env.IMAGE_TAG = "${env.IMAGE_BASENAME}:${branch}-${env.BUILD_NUMBER}"
           def buildCtx = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
@@ -130,21 +142,18 @@ pipeline {
       }
     }
 
-    // --- Optional push ---
+    // ---------- Optional Push ----------
     stage('Optional Push') {
       when { expression { return env.HAS_DOCKER == 'yes' && env.DOCKERHUB_PUSH?.trim() == 'true' } }
       steps {
         script {
-          withCredentials([usernamePassword(
-            credentialsId: 'dockerhub-creds',
-            usernameVariable: 'DOCKER_USER',
-            passwordVariable: 'DOCKER_PASS'
-          )]) {
+          withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+                                            usernameVariable: 'DOCKER_USER',
+                                            passwordVariable: 'DOCKER_PASS')]) {
             sh '''
               set -e
               echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
             '''
-            // пуш в свой namespace: $DOCKER_USER/<name>:buildNumber
             def pushTag = "${env.DOCKER_USER}/${env.IMAGE_BASENAME}:${env.BUILD_NUMBER}"
             sh """
               docker tag ${env.IMAGE_TAG} ${pushTag}
