@@ -6,7 +6,8 @@ from .services_notifications import send_telegram_message
 
 
 async def process_due_reminders(db: AsyncSession) -> int:
-    now = datetime.utcnow()
+    # Сравниваем с локальным временем, т.к. датавремена сохраняются без таймзоны
+    now = datetime.now()
     result = await db.execute(
         select(Reminder).where(Reminder.sent == False, Reminder.remind_at <= now)  # noqa: E712
     )
