@@ -1,8 +1,6 @@
 pipeline {
   agent any
-
   environment { PYTHONUNBUFFERED = '1' }
-
   options { timestamps() }
 
   stages {
@@ -20,17 +18,27 @@ pipeline {
       }
     }
 
-    stage('Tests') {
+    // Fallback без Docker: ставим python в .venv и гоняем pytest
+    stage('Tests (fallback)') {
       when { expression { return env.HAS_DOCKER == 'no' } }
       steps {
         sh '''
-          # локально без docker: ставим питон-зависимости в venv
-          python3 -V  true
-          pip3 -V  true
-          python3 -m venv .venv
+          set -e
+          if command -v python3 >/dev/null 2>&1; then PY=python3; PIP=pip3;
+          elif command -v python >/dev/null 2>&1; then PY=python; PIP=pip;
+          else
+            echo "Python not installed on agent"; exit 2;
+          fi
+
+          $PY --version  true
+          $PIP --version  true
+
+          $PY -m venv .venv
           . .venv/bin/activate || source .venv/Scripts/activate
+
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
           pytest -q --junitxml=pytest.xml --cov=src --cov-report=term-missing --cov-report=xml
         '''
       }
@@ -39,15 +47,17 @@ pipeline {
           junit 'pytest.xml'
           script {
             if (fileExists('coverage.xml')) {
-              publishCoverage adapters: [coberturaAdapter('coverage.xml')], sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
+              publishCoverage adapters: [coberturaAdapter('coverage.xml')],
+                              sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
             } else {
-              echo 'coverage.xml not found — skipping coverage publish'
+              echo 'coverage.xml not found — skipping coverage'
             }
           }
         }
       }
     }
 
+    // Variant A: тесты в python:3.11 (docker run)
     stage('Tests (in Docker)') {
       when { expression { return env.HAS_DOCKER == 'yes' } }
       steps {
@@ -66,9 +76,10 @@ pipeline {
           junit 'pytest.xml'
           script {
             if (fileExists('coverage.xml')) {
-              publishCoverage adapters: [coberturaAdapter('coverage.xml')], sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
+              publishCoverage adapters: [coberturaAdapter('coverage.xml')],
+                              sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
             } else {
-              echo 'coverage.xml not found — skipping coverage publish'
+              echo 'coverage.xml not found — skipping coverage'
             }
           }
         }
