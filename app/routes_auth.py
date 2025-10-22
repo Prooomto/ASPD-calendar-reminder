@@ -32,5 +32,3 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     token = create_access_token(subject=user.email, expires_delta=timedelta(minutes=60))
     return {"access_token": token, "token_type": "bearer"}
-
-
