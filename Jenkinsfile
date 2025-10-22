@@ -53,7 +53,7 @@ pipeline {
               python -m pip install --upgrade pip
               pip install -r requirements.txt
 
-              pytest -q --junitxml=pytest.xml --cov=src --cov-report=term-missing --cov-report=xml
+              pip install pytest pytest-cov && pytest -q --junitxml=pytest.xml --cov=src --cov-report=term-missing --cov-report=xml
             '''
           }
         }
@@ -89,7 +89,7 @@ pipeline {
                 set -e
                 python -m pip install --upgrade pip &&
                 pip install -r requirements.txt &&
-                pytest -q --junitxml=pytest.xml --cov=src --cov-report=term-missing --cov-report=xml
+                pip install pytest pytest-cov && spytest -q --junitxml=pytest.xml --cov=src --cov-report=term-missing --cov-report=xml
               ")
 
               # Копируем исходники внутрь контейнера (без bind-mount)
