@@ -38,7 +38,7 @@ pipeline {
           . .venv/bin/activate || source .venv/Scripts/activate
 
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r ASPD-calendar-reminder/requirements.txt
 
           pytest -q --junitxml=pytest.xml --cov=src --cov-report=term-missing --cov-report=xml
         '''
