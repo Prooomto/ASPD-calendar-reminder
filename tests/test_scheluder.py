@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from src.scheluder import schedule_event
 
 def test_schedule_event():
