@@ -77,58 +77,66 @@ pipeline {
 
     // ---------- Tests (in Docker, Variant A без bind-mount) ----------
     stage('Tests (in Docker)') {
-      when { expression { return env.HAS_DOCKER == 'yes' } }
-      steps {
-        script {
-          def runDir = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
-          dir(runDir) {
-            sh '''
-              set -e
-              echo "RunDir: $(pwd)"
-              # Создаём контейнер с рабочей директорией /workspace
-              CID=$(docker create -w /workspace python:3.11 bash -lc "
-                set -e
-                python -m pip install --upgrade pip &&
-                pip install -r requirements.txt &&
-                pip install pytest pytest-cov && 
-                pytest -q --junitxml=pytest.xml --cov=src --cov-report=term-missing --cov-report=xml
-              ")
+  when { expression { return env.HAS_DOCKER == 'yes' } }
+  steps {
+    script {
+      def runDir = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
+      dir(runDir) {
+        sh '''
+          set -e
+          echo "RunDir: $(pwd)"
 
-              # Копируем исходники внутрь контейнера (без bind-mount)
-              docker cp . "${CID}:/workspace"
+          # 1) Создаём контейнер с рабочей директорией /workspace
+          CID=$(docker create -w /workspace python:3.11 bash -lc "
+            set -e
+            python -m pip install --upgrade pip &&
+            pip install -r requirements.txt &&
+            pip install pytest pytest-cov &&
+            pytest -q --junitxml=pytest.xml --cov=src --cov-report=term-missing --cov-report=xml
+          ")
 
-              # Запускаем и ждём завершения
-              set +e
-              docker start -a "$CID"
-              EXIT_CODE=$?
-              set -e
+          # 2) Копируем исходники внутрь контейнера (без bind-mount)
+          docker cp . \"${CID}:/workspace\"
 
-              # Забираем отчёты обратно в рабочую директорию Jenkins
-              docker cp "$CID:/workspace/pytest.xml"   ./pytest.xml    true
-              docker cp "$CID:/workspace/coverage.xml" ./coverage.xml  true
+          # 3) Запускаем и ждём завершения
+          set +e
+          docker start -a \"$CID\"
+          EXIT_CODE=$?
+          set -e
 
-              # Убираем контейнер
-              docker rm -f "$CID" >/dev/null 2>&1  true
-              exit $EXIT_CODE
-            '''
-          }
-        }
+          # 4) Забираем отчёты обратно (не падать, если файла нет)
+          docker cp \"$CID:/workspace/pytest.xml\"   ./pytest.xml   2>/dev/null  true
+          docker cp \"$CID:/workspace/coverage.xml\" ./coverage.xml 2>/dev/null  true
+
+          # 5) Убираем контейнер
+          docker rm -f \"$CID\" >/dev/null 2>&1 || true
+
+          exit $EXIT_CODE
+        '''
       }
-      post {
-        always {
-          script {
-            def runDir = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
-            dir(runDir) {
-              if (fileExists('pytest.xml')) junit 'pytest.xml' else echo 'pytest.xml not found'
-              if (fileExists('coverage.xml')) {
-                publishCoverage adapters: [coberturaAdapter('coverage.xml')],
-                                sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
-              } else echo 'coverage.xml not found'
-            }
+    }
+  }
+  post {
+    always {
+      script {
+        def runDir = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
+        dir(runDir) {
+          if (fileExists('pytest.xml')) {
+            junit 'pytest.xml'
+          } else {
+            echo 'pytest.xml not found — skipping junit publish'
+          }
+          if (fileExists('coverage.xml')) {
+            publishCoverage adapters: [coberturaAdapter('coverage.xml')],
+                            sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
+          } else {
+            echo 'coverage.xml not found — skipping coverage publish'
           }
         }
       }
     }
+  }
+}
 
     // ---------- Build Docker image ----------
     stage('Build Docker image') {
