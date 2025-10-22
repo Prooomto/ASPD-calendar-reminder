@@ -22,6 +22,7 @@ pipeline {
     stage('Tests (fallback)') {
       when { expression { return env.HAS_DOCKER == 'no' } }
       steps {
+        dir('ASPD-calendar-reminder') {
         sh '''
           set -e
           if command -v python3 >/dev/null 2>&1; then PY=python3; PIP=pip3;
@@ -41,7 +42,7 @@ pipeline {
 
           pytest -q --junitxml=pytest.xml --cov=src --cov-report=term-missing --cov-report=xml
         '''
-      }
+      }}
       post {
         always {
           junit 'pytest.xml'
