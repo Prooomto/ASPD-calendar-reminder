@@ -43,11 +43,11 @@ pipeline {
                 echo "Python not installed on agent"; exit 2;
               fi
 
-              $PY --version  true
-              $PIP --version  true
+              $PY --version || true
+              $PIP --version || true
 
               $PY -m venv .venv
-              . .venv/bin/activate  source .venv/Scripts/activate
+              . .venv/bin/activate || source .venv/Scripts/activate
 
               python -m pip install --upgrade pip
               pip install -r requirements.txt
@@ -104,11 +104,11 @@ pipeline {
               set -e
 
               # 4) Забираем отчёты обратно (не падать, если файла нет)
-              docker cp "$CID:/workspace/pytest.xml"   ./pytest.xml   2>/dev/null  true
-              docker cp "$CID:/workspace/coverage.xml" ./coverage.xml 2>/dev/null  true
+              docker cp "$CID:/workspace/pytest.xml"   ./pytest.xml   2>/dev/null || true
+              docker cp "$CID:/workspace/coverage.xml" ./coverage.xml 2>/dev/null || true
 
               # 5) Удаляем контейнер
-              docker rm -f "$CID" >/dev/null 2>&1  true
+              docker rm -f "$CID" >/dev/null 2>&1 || true
               exit $EXIT_CODE
             '''
           }
