@@ -4,13 +4,12 @@ pipeline {
   environment {
     PYTHONUNBUFFERED = '1'
     IMAGE_BASENAME   = 'aspd-calendar-reminder'
-    // код и requirements.txt в КОРНЕ:
-    SUBDIR           = ''
+    SUBDIR           = ''   // код и requirements.txt в КОРНЕ
   }
 
   options {
     timestamps()
-    // ansiColor('xterm') // включи, если установлен AnsiColor
+    // ansiColor('xterm') // включи при наличии AnsiColor
   }
 
   stages {
@@ -29,7 +28,7 @@ pipeline {
       }
     }
 
-    // ---------- Tests (fallback: без docker) ----------
+    // ----- Tests (fallback: без docker) -----
     stage('Tests (fallback)') {
       when { expression { return env.HAS_DOCKER == 'no' } }
       steps {
@@ -52,8 +51,8 @@ pipeline {
 
               python -m pip install --upgrade pip
               pip install -r requirements.txt
+              pip install pytest pytest-cov
 
-              pip install pytest pytest-cov && 
               pytest -q --junitxml=pytest.xml --cov=src --cov-report=term-missing --cov-report=xml
             '''
           }
@@ -75,70 +74,63 @@ pipeline {
       }
     }
 
-    // ---------- Tests (in Docker, Variant A без bind-mount) ----------
+    // ----- Tests (in Docker, без bind-mount) -----
     stage('Tests (in Docker)') {
-  when { expression { return env.HAS_DOCKER == 'yes' } }
-  steps {
-    script {
-      def runDir = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
-      dir(runDir) {
-        sh '''
-          set -e
-          echo "RunDir: $(pwd)"
+      when { expression { return env.HAS_DOCKER == 'yes' } }
+      steps {
+        script {
+          def runDir = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
+          dir(runDir) {
+            sh '''
+              set -e
+              echo "RunDir: $(pwd)"
 
-          # 1) Создаём контейнер с рабочей директорией /workspace
-          CID=$(docker create -w /workspace python:3.11 bash -lc "
-            set -e
-            python -m pip install --upgrade pip &&
-            pip install -r requirements.txt &&
-            pip install pytest pytest-cov &&
-            pytest -q --junitxml=pytest.xml --cov=src --cov-report=term-missing --cov-report=xml
-          ")
+              # 1) Создаём контейнер
+              CID=$(docker create -w /workspace python:3.11 bash -lc "
+                set -e
+                python -m pip install --upgrade pip &&
+                pip install -r requirements.txt &&
+                pip install pytest pytest-cov &&
+                pytest -q --junitxml=pytest.xml --cov=src --cov-report=term-missing --cov-report=xml
+              ")
 
-          # 2) Копируем исходники внутрь контейнера (без bind-mount)
-          docker cp . \"${CID}:/workspace\"
+              # 2) Копируем исходники внутрь контейнера
+              docker cp . "$CID:/workspace"
 
-          # 3) Запускаем и ждём завершения
-          set +e
-          docker start -a \"$CID\"
-          EXIT_CODE=$?
-          set -e
+              # 3) Запускаем и ждём завершения
+              set +e
+              docker start -a "$CID"
+              EXIT_CODE=$?
+              set -e
 
-          # 4) Забираем отчёты обратно (не падать, если файла нет)
-          docker cp \"$CID:/workspace/pytest.xml\"   ./pytest.xml   2>/dev/null  true
-          docker cp \"$CID:/workspace/coverage.xml\" ./coverage.xml 2>/dev/null  true
+              # 4) Забираем отчёты обратно (не падать, если файла нет)
+              docker cp "$CID:/workspace/pytest.xml"   ./pytest.xml   2>/dev/null  true
+              docker cp "$CID:/workspace/coverage.xml" ./coverage.xml 2>/dev/null  true
 
-          # 5) Убираем контейнер
-          docker rm -f \"$CID\" >/dev/null 2>&1 || true
-
-          exit $EXIT_CODE
-        '''
-      }
-    }
-  }
-  post {
-    always {
-      script {
-        def runDir = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
-        dir(runDir) {
-          if (fileExists('pytest.xml')) {
-            junit 'pytest.xml'
-          } else {
-            echo 'pytest.xml not found — skipping junit publish'
+              # 5) Удаляем контейнер
+              docker rm -f "$CID" >/dev/null 2>&1  true
+              exit $EXIT_CODE
+            '''
           }
-          if (fileExists('coverage.xml')) {
-            publishCoverage adapters: [coberturaAdapter('coverage.xml')],
-                            sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
-          } else {
-            echo 'coverage.xml not found — skipping coverage publish'
+        }
+      }
+      post {
+        always {
+          script {
+            def runDir = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
+            dir(runDir) {
+              if (fileExists('pytest.xml')) junit 'pytest.xml' else echo 'pytest.xml not found'
+              if (fileExists('coverage.xml')) {
+                publishCoverage adapters: [coberturaAdapter('coverage.xml')],
+                                sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
+              } else echo 'coverage.xml not found'
+            }
           }
         }
       }
     }
-  }
-}
 
-    // ---------- Build Docker image ----------
+    // ----- Build Docker image -----
     stage('Build Docker image') {
       when { expression { return env.HAS_DOCKER == 'yes' } }
       steps {
@@ -152,14 +144,16 @@ pipeline {
       }
     }
 
-    // ---------- Optional Push ----------
+    // ----- Optional Push -----
     stage('Optional Push') {
       when { expression { return env.HAS_DOCKER == 'yes' && env.DOCKERHUB_PUSH?.trim() == 'true' } }
       steps {
         script {
-          withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
-                                            usernameVariable: 'DOCKER_USER',
-                                            passwordVariable: 'DOCKER_PASS')]) {
+          withCredentials([usernamePassword(
+            credentialsId: 'dockerhub-creds',
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS'
+          )]) {
             sh '''
               set -e
               echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
