@@ -121,7 +121,7 @@ pipeline {
             dir(runDir) {
               if (fileExists('pytest.xml')) junit 'pytest.xml' else echo 'pytest.xml not found'
               if (fileExists('coverage.xml')) {
-                publishCoverage adapters: [coberturaAdapter('coverage.xml')],
+                publishCoverage adapters: [covergePlugin('coverage.xml')],
                                 sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
               } else echo 'coverage.xml not found'
             }
