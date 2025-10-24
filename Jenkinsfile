@@ -63,10 +63,14 @@ pipeline {
           script {
             def runDir = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
             dir(runDir) {
-              if (fileExists('pytest.xml')) junit 'pytest.xml' else echo 'pytest.xml not found'
+              if (fileExists('pytest.xml')) {
+                junit 'pytest.xml'
+                archiveArtifacts artifacts: 'pytest.xml', fingerprint: true
+                echo 'Test results archived: pytest.xml'
+              } else echo 'pytest.xml not found'
               if (fileExists('coverage.xml')) {
-                publishCoverage adapters: [coberturaAdapter('coverage.xml')],
-                                sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
+                archiveArtifacts artifacts: 'coverage.xml', fingerprint: true
+                echo 'Coverage report archived: coverage.xml'
               } else echo 'coverage.xml not found'
             }
           }
@@ -119,10 +123,14 @@ pipeline {
           script {
             def runDir = (env.SUBDIR?.trim()) ? "${env.WORKSPACE}/${env.SUBDIR}" : "${env.WORKSPACE}"
             dir(runDir) {
-              if (fileExists('pytest.xml')) junit 'pytest.xml' else echo 'pytest.xml not found'
+              if (fileExists('pytest.xml')) {
+                junit 'pytest.xml'
+                archiveArtifacts artifacts: 'pytest.xml', fingerprint: true
+                echo 'Test results archived: pytest.xml'
+              } else echo 'pytest.xml not found'
               if (fileExists('coverage.xml')) {
-                publishCoverage adapters: [covergePlugin('coverage.xml')],
-                                sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
+                archiveArtifacts artifacts: 'coverage.xml', fingerprint: true
+                echo 'Coverage report archived: coverage.xml'
               } else echo 'coverage.xml not found'
             }
           }
