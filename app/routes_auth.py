@@ -6,7 +6,7 @@ from sqlalchemy import select
 from .db import get_db
 from .models import User
 from .schemas import UserCreate, UserOut, Token
-from .auth import hash_password, verify_password, create_access_token
+from .auth import hash_password, verify_password, create_access_token, get_current_user
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -32,3 +32,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     token = create_access_token(subject=user.email, expires_delta=timedelta(minutes=60))
     return {"access_token": token, "token_type": "bearer"}
+
+
+@router.get("/me")
+async def me(user: User = Depends(get_current_user)):
+    return {"id": user.id, "name": user.name, "email": user.email, "telegram_id": user.telegram_id}
+

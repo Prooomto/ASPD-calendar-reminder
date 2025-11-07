@@ -7,13 +7,15 @@ import json
 import os
 import httpx
 from dotenv import load_dotenv
+from pathlib import Path
 
 # Загружаем переменные окружения из .env файла
 load_dotenv()
 
 TOKEN = os.getenv("BOT_TOKEN", "")
-DATA_FILE = "src/storage.json"
-TOKENS_FILE = "src/tokens.json"
+BASE_DIR = Path(__file__).resolve().parent
+DATA_FILE = BASE_DIR / "storage.json"
+TOKENS_FILE = BASE_DIR / "tokens.json"
 
 if not TOKEN:
     print("❌ BOT_TOKEN not found in environment variables!")
@@ -24,24 +26,19 @@ dp = Dispatcher()
 scheduler = AsyncIOScheduler()
 
 def load_events():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    return {}
+    return json.loads(DATA_FILE.read_text(encoding="utf-8")) if DATA_FILE.exists() else {}
 
 def save_events(events):
-    with open(DATA_FILE, "w") as f:
-        json.dump(events, f, indent=4)
+    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+    DATA_FILE.write_text(json.dumps(events, indent=4, ensure_ascii=False), encoding="utf-8")
 
 def load_tokens():
-    if os.path.exists(TOKENS_FILE):
-        with open(TOKENS_FILE, "r") as f:
-            return json.load(f)
-    return {}
+    return json.loads(TOKENS_FILE.read_text(encoding="utf-8")) if TOKENS_FILE.exists() else {}
 
 def save_tokens(tokens):
-    with open(TOKENS_FILE, "w") as f:
-        json.dump(tokens, f, indent=4)
+    TOKENS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    TOKENS_FILE.write_text(json.dumps(tokens, indent=4, ensure_ascii=False), encoding="utf-8")
+
 
 @dp.message(Command("start"))
 async def start_command(message: types.Message):

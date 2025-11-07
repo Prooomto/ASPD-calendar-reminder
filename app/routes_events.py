@@ -1,23 +1,33 @@
-from datetime import timedelta
+from datetime import timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from .db import get_db
 from .models import Event, Reminder, User
-from .schemas import EventCreate, EventOut, ReminderOut
+from .schemas import EventCreate, EventOut, ReminderOut, UserOut
 from .auth import get_current_user
 
 
 router = APIRouter(prefix="/events", tags=["events"])
 
+def _to_naive_utc(dt):
+    """Привести datetime к naive (UTC без tzinfo)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        # в UTC и убираем tzinfo
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
 
 @router.post("/", response_model=EventOut)
 async def create_event(payload: EventCreate, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    start = _to_naive_utc(payload.start_time)
     event = Event(
         user_id=user.id,
         title=payload.title,
         description=payload.description,
-        start_time=payload.start_time,
+        start_time=start,
         recurrence=payload.recurrence,
     )
     db.add(event)
@@ -26,7 +36,7 @@ async def create_event(payload: EventCreate, db: AsyncSession = Depends(get_db),
     # reminders_minutes_before: create Reminder records
     if payload.reminders_minutes_before:
         for minutes in payload.reminders_minutes_before:
-            remind_at = payload.start_time - timedelta(minutes=minutes)
+            remind_at = start - timedelta(minutes=minutes)
             db.add(Reminder(event_id=event.id, remind_at=remind_at))
 
     await db.commit()
@@ -67,11 +77,13 @@ async def update_event(event_id: int, payload: EventCreate, db: AsyncSession = D
     event = result.scalar_one_or_none()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    
+
+    start = _to_naive_utc(payload.start_time)
+
     # Обновляем поля события
     event.title = payload.title
     event.description = payload.description
-    event.start_time = payload.start_time
+    event.start_time = start
     event.recurrence = payload.recurrence
     
     # Удаляем старые напоминания
@@ -80,7 +92,7 @@ async def update_event(event_id: int, payload: EventCreate, db: AsyncSession = D
     # Создаем новые напоминания
     if payload.reminders_minutes_before:
         for minutes in payload.reminders_minutes_before:
-            remind_at = payload.start_time - timedelta(minutes=minutes)
+            remind_at = start - timedelta(minutes=minutes)
             db.add(Reminder(event_id=event.id, remind_at=remind_at))
     
     await db.commit()

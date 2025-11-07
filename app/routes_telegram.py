@@ -45,3 +45,6 @@ async def get_token_by_telegram(telegram_id: str, db: AsyncSession = Depends(get
     return {"access_token": token, "token_type": "bearer"}
 
 
+@router.get("/link/status")
+async def link_status(user: User = Depends(get_current_user)):
+    return {"linked": bool(user.telegram_id), "telegram_id": user.telegram_id}
