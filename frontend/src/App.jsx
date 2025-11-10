@@ -2,6 +2,9 @@ import { Routes, Route, Link, Navigate, useLocation } from "react-router-dom";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Events from "./pages/Events";
+import Companies from "./pages/Companies";
+import CompanyDetails from "./pages/CompanyDetails";
+
 
 function Private({ children }) {
   const token = localStorage.getItem("token");
@@ -52,12 +55,15 @@ function Nav() {
         <Link to="/events" style={linkStyle("/events")}>
           События
         </Link>
+          <Link to="/companies" style={linkStyle("/companies")}>Компании</Link>
+
         <Link to="/register" style={linkStyle("/register")}>
           Регистрация
         </Link>
         <Link to="/login" style={linkStyle("/login")}>
           Вход
         </Link>
+
       </div>
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
@@ -106,6 +112,22 @@ export default function App() {
             </Private>
           }
         />
+        <Route
+  path="/companies"
+  element={
+    <Private>
+      <Companies />
+    </Private>
+  }
+/>
+<Route
+  path="/companies/:id"
+  element={
+    <Private>
+      <CompanyDetails />
+    </Private>
+  }
+/>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

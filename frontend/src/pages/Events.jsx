@@ -10,6 +10,7 @@ import {
   listReminders,
   telegramLinkStatus,
   getMe,
+  apiListCompanies,            // ⬅️ добавили импорт
 } from "../api";
 import { formatLocal } from "../helpers/date";
 
@@ -29,6 +30,10 @@ export default function Events() {
   // данные
   const [events, setEvents] = useState([]);
   const [error, setError] = useState(null);
+
+  // компании (новое)
+  const [companies, setCompanies] = useState([]); // [{id, name, ...}]
+  const [companyId, setCompanyId] = useState(""); // строка из <select>, конвертим в число при отправке
 
   // привязка TG
   const [linkInfo, setLinkInfo] = useState(null);
@@ -58,12 +63,14 @@ export default function Events() {
     (async () => {
       setError(null);
       try {
-        const [meResp, tgResp] = await Promise.all([
+        const [meResp, tgResp, companiesResp] = await Promise.all([
           getMe().catch(() => null),
           telegramLinkStatus().catch(() => ({ linked: false, telegram_id: null })),
+          apiListCompanies().catch(() => []), // ⬅️ загрузили компании
         ]);
         if (meResp) setMe(meResp);
         setTg(tgResp || { linked: false, telegram_id: null });
+        setCompanies(Array.isArray(companiesResp) ? companiesResp : []);
 
         const from = formatISO(new Date());
         const to = formatISO(addDays(new Date(), 7));
@@ -99,6 +106,7 @@ export default function Events() {
     setDesc("");
     setRecurrence("");
     setRem({ m5: false, m30: false, h1: false, d1: false });
+    setCompanyId(""); // ⬅️ сбрасываем выбор компании
     setEditId(null);
   }
 
@@ -121,6 +129,7 @@ export default function Events() {
       start_time: new Date(dt).toISOString(), // сервер хранит в UTC
       recurrence: recurrence || null,
       reminders_minutes_before: collectReminders(),
+      company_id: companyId ? Number(companyId) : null, // ⬅️ главное изменение
     };
     try {
       if (isEdit) await updateEvent(editId, payload);
@@ -151,6 +160,7 @@ export default function Events() {
       setDesc(ev.description || "");
       setRecurrence(ev.recurrence || "");
       setDt(toInputLocalValue(ev.start_time));
+      setCompanyId(ev.company_id ? String(ev.company_id) : ""); // ⬅️ подставляем выбранную компанию
       const mins = ev.reminders_minutes_before || [];
       setRem({
         m5: mins.includes(5),
@@ -189,6 +199,12 @@ export default function Events() {
     }
   }
 
+  // вспомогательно: имя компании по id для списка событий
+  function companyNameById(id) {
+    const c = companies.find((x) => x.id === id);
+    return c ? c.name : null;
+  }
+
   return (
     <div className="wrap">
       <header className="topbar">
@@ -224,11 +240,31 @@ export default function Events() {
 
         <section className="panel">
           <div className="grid2">
-            <input placeholder={isEdit ? "Редактирование: заголовок" : "Заголовок"} value={title} onChange={e => setTitle(e.target.value)} />
+            <input
+              placeholder={isEdit ? "Редактирование: заголовок" : "Заголовок"}
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+            />
             <input type="datetime-local" value={dt} onChange={e => setDt(e.target.value)} />
           </div>
 
-          <textarea placeholder="Описание (необязательно)" value={desc} onChange={e => setDesc(e.target.value)} rows={4} />
+          {/* выбор компании */}
+          <div className="form-row">
+            <label>Компания:</label>
+            <select value={companyId} onChange={(e)=>setCompanyId(e.target.value)}>
+              <option value="">(личное событие)</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <textarea
+            placeholder="Описание (необязательно)"
+            value={desc}
+            onChange={e => setDesc(e.target.value)}
+            rows={4}
+          />
 
           <div className="form-row">
             <label>Повтор:</label>
@@ -258,7 +294,14 @@ export default function Events() {
           {events.map(ev => (
             <li key={ev.id} className="item">
               <div className="item-main">
-                <div className="item-title">{ev.title}</div>
+                <div className="item-title">
+                  {ev.title}
+                  {ev.company_id ? (
+                    <span className="badge" style={{ marginLeft: 8 }}>
+                      {companyNameById(ev.company_id) || `company #${ev.company_id}`}
+                    </span>
+                  ) : null}
+                </div>
                 <div className="item-sub">
                   {formatLocal(ev.start_time)}
                   {ev.description ? " — " + ev.description : ""}

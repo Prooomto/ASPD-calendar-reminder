@@ -108,4 +108,46 @@ export async function getMe() {
 }
 
 
+// ==== COMPANIES ====
+export async function apiListCompanies() {
+  const res = await api.get("/companies/");
+  return res.data; // CompanyOut[]
+}
+
+export async function apiCreateCompany(body) {
+  const res = await api.post("/companies/", body); // {name, description?}
+  return res.data; // CompanyOut
+}
+
+export async function apiGetCompany(id) {
+  const res = await api.get(`/companies/${id}`);
+  return res.data; // CompanyOut
+}
+
+export async function apiDeleteCompany(id) {
+  const res = await api.delete(`/companies/${id}`);
+  return res.data; // {status:"deleted"}
+}
+
+export async function apiListMembers(companyId) {
+  const res = await api.get(`/companies/${companyId}/members`);
+  return res.data; // CompanyMemberOut[]
+}
+
+export async function apiAddMember(companyId, user_email) {
+  const res = await api.post(`/companies/${companyId}/members`, { user_email });
+  return res.data; // CompanyMemberOut
+}
+
+export async function apiRemoveMember(companyId, memberId) {
+  const res = await api.delete(`/companies/${companyId}/members/${memberId}`);
+  return res.data; // {status:"removed"}
+}
+
+export async function apiUpdateMemberRole(companyId, memberId, role) {
+  const res = await api.put(`/companies/${companyId}/members/${memberId}/role`, null, {
+    params: { role },
+  });
+  return res.data; // {status:"updated"}
+}
 
