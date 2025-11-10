@@ -48,10 +48,13 @@ async def create_event(payload: EventCreate, db: AsyncSession = Depends(get_db),
     await db.flush()
 
     # reminders_minutes_before: create Reminder records
-    if payload.reminders_minutes_before:
-        for minutes in payload.reminders_minutes_before:
-            remind_at = start - timedelta(minutes=minutes)
-            db.add(Reminder(event_id=event.id, remind_at=remind_at))
+    reminder_offsets = set(payload.reminders_minutes_before or [])
+    reminder_offsets.add(0)
+    for minutes in sorted(reminder_offsets):
+        if minutes < 0:
+            continue
+        remind_at = start - timedelta(minutes=minutes)
+        db.add(Reminder(event_id=event.id, remind_at=remind_at))
 
     await db.commit()
     await db.refresh(event)
@@ -178,10 +181,13 @@ async def update_event(event_id: int, payload: EventCreate, db: AsyncSession = D
     await db.execute(delete(Reminder).where(Reminder.event_id == event.id))
     
     # Создаем новые напоминания
-    if payload.reminders_minutes_before:
-        for minutes in payload.reminders_minutes_before:
-            remind_at = start - timedelta(minutes=minutes)
-            db.add(Reminder(event_id=event.id, remind_at=remind_at))
+    reminder_offsets = set(payload.reminders_minutes_before or [])
+    reminder_offsets.add(0)
+    for minutes in sorted(reminder_offsets):
+        if minutes < 0:
+            continue
+        remind_at = start - timedelta(minutes=minutes)
+        db.add(Reminder(event_id=event.id, remind_at=remind_at))
     
     await db.commit()
     await db.refresh(event)
