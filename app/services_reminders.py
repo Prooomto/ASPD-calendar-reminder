@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from .models import Reminder, Event, User
+from .models import Reminder, Event, User, CompanyMember
 from .services_notifications import send_telegram_message
 
 async def process_due_reminders(db: AsyncSession) -> int:
@@ -34,16 +34,46 @@ async def process_due_reminders(db: AsyncSession) -> int:
             row = event_result.first()
             if not row:
                 continue
-            event, user = row
-            if not user.telegram_id:
-                continue
-
-            ok = await send_telegram_message(user.telegram_id, f"🔔 Напоминание: {event.title}")
-            if ok:
-                await db.execute(
-                    update(Reminder).where(Reminder.id == rem.id).values(sent=True)
+            event, creator_user = row
+            
+            # Если это корпоративное событие, отправляем всем участникам компании
+            if event.company_id:
+                # Получаем всех участников компании
+                members_result = await db.execute(
+                    select(CompanyMember, User)
+                    .join(User, CompanyMember.user_id == User.id)
+                    .where(CompanyMember.company_id == event.company_id)
                 )
-                sent_count += 1
+                members = members_result.all()
+                
+                # Отправляем уведомление всем участникам с привязанным Telegram
+                success_count = 0
+                for member, user in members:
+                    if user.telegram_id:
+                        description_text = f"\n{event.description}" if event.description else ""
+                        message = f"🔔 Корпоративное напоминание: {event.title}{description_text}"
+                        ok = await send_telegram_message(user.telegram_id, message)
+                        if ok:
+                            success_count += 1
+                
+                # Помечаем напоминание как отправленное, если хотя бы одно сообщение отправлено
+                if success_count > 0:
+                    await db.execute(
+                        update(Reminder).where(Reminder.id == rem.id).values(sent=True)
+                    )
+                    sent_count += 1
+            else:
+                # Личное событие - отправляем только создателю
+                if not creator_user.telegram_id:
+                    continue
+
+                description_text = f"\n{event.description}" if event.description else ""
+                ok = await send_telegram_message(creator_user.telegram_id, f"🔔 Напоминание: {event.title}{description_text}")
+                if ok:
+                    await db.execute(
+                        update(Reminder).where(Reminder.id == rem.id).values(sent=True)
+                    )
+                    sent_count += 1
 
     if sent_count:
         await db.commit()

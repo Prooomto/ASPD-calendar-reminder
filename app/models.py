@@ -17,6 +17,7 @@ class User(Base):
 
     events: Mapped[list["Event"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     telegram_links: Mapped[list["TelegramLink"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    company_memberships: Mapped[list["CompanyMember"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Event(Base):
@@ -24,6 +25,7 @@ class Event(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    company_id: Mapped[Optional[int]] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True, nullable=True)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[Optional[str]] = mapped_column(Text)
     start_time: Mapped[datetime] = mapped_column(DateTime, index=True)
@@ -31,6 +33,7 @@ class Event(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="events")
+    company: Mapped[Optional["Company"]] = relationship(back_populates="events")
     reminders: Mapped[list["Reminder"]] = relationship(back_populates="event", cascade="all, delete-orphan")
 
 
@@ -55,5 +58,32 @@ class TelegramLink(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="telegram_links")
+
+
+class Company(Base):
+    __tablename__ = "companies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    members: Mapped[list["CompanyMember"]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    events: Mapped[list["Event"]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    creator: Mapped["User"] = relationship(foreign_keys=[created_by])
+
+
+class CompanyMember(Base):
+    __tablename__ = "company_members"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(50), default="member")  # owner, admin, member
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    company: Mapped["Company"] = relationship(back_populates="members")
+    user: Mapped["User"] = relationship(back_populates="company_memberships")
 
 

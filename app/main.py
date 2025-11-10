@@ -4,6 +4,7 @@ from .db import engine, Base
 from .routes_auth import router as auth_router
 from .routes_events import router as events_router
 from .routes_telegram import router as telegram_router
+from .routes_companies import router as companies_router
 from .services_scheduler import start_scheduler
 
 # FastAPI app
@@ -35,11 +36,63 @@ async def on_startup():
     # Create tables if not exist (for dev). In prod use Alembic.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # lightweight auto-migration to ensure corporate column exists on events
+        # 1) add company_id column if missing
+        await conn.exec_driver_sql(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'events' AND column_name = 'company_id'
+                ) THEN
+                    ALTER TABLE events ADD COLUMN company_id INTEGER;
+                END IF;
+            END
+            $$;
+            """
+        )
+        # 2) add index for company_id if missing
+        await conn.exec_driver_sql(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relname = 'ix_events_company_id' AND n.nspname = 'public'
+                ) THEN
+                    CREATE INDEX ix_events_company_id ON events (company_id);
+                END IF;
+            END
+            $$;
+            """
+        )
+        # 3) add foreign key to companies if missing
+        await conn.exec_driver_sql(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'fk_events_company_id_companies_id'
+                ) THEN
+                    ALTER TABLE events
+                    ADD CONSTRAINT fk_events_company_id_companies_id
+                    FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE;
+                END IF;
+            END
+            $$;
+            """
+        )
     start_scheduler()
 
 
 app.include_router(auth_router)
 app.include_router(events_router)
 app.include_router(telegram_router)
+app.include_router(companies_router)
 
 
